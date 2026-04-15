@@ -1,5 +1,7 @@
 import { useNavigate } from 'react-router-dom';
+import { Volume2 } from 'lucide-react';
 import type { RecordingSummary } from '@/types/domain';
+import { usePlayback } from '@/hooks/use-playback';
 
 function formatDuration(ms: number): string {
   const s = Math.floor(ms / 1000);
@@ -10,6 +12,8 @@ function formatDuration(ms: number): string {
 
 export default function RecordingCard({ recording }: { recording: RecordingSummary }) {
   const navigate = useNavigate();
+  const { activeId, isPlaying } = usePlayback();
+  const isThisPlaying = activeId === recording.id && isPlaying;
   const duration = formatDuration(recording.durationMs);
   const date = new Date(recording.createdAt).toLocaleDateString('en-US', {
     month: 'short',
@@ -22,9 +26,14 @@ export default function RecordingCard({ recording }: { recording: RecordingSumma
       className="w-full text-left rounded-xl bg-card p-4 transition-colors hover:bg-surface-hover cursor-pointer"
     >
       <div className="min-w-0">
-        <p className="text-sm font-medium truncate">
-          {recording.title || recording.notePreview || 'Untitled recording'}
-        </p>
+        <div className="flex items-center gap-2">
+          <p className="text-sm font-medium truncate flex-1">
+            {recording.title || recording.notePreview || 'Untitled recording'}
+          </p>
+          {isThisPlaying && (
+            <Volume2 className="h-3.5 w-3.5 text-primary flex-shrink-0 animate-pulse" />
+          )}
+        </div>
         {recording.notePreview && recording.title && (
           <p className="text-xs text-muted-foreground truncate mt-0.5">{recording.notePreview}</p>
         )}
