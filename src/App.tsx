@@ -35,8 +35,8 @@ const App = () => (
             <BottomNav />
           </div>
         </BrowserRouter>
-      </RecordingsProvider>
-    </TooltipProvider>
+      </TooltipProvider>
+    </RecordingsProvider>
   </QueryClientProvider>
 );
 
