@@ -38,6 +38,7 @@ const App = () => (
           </div>
         </BrowserRouter>
       </TooltipProvider>
+      </PlaybackProvider>
     </RecordingsProvider>
   </QueryClientProvider>
 );
