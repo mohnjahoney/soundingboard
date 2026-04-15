@@ -4,6 +4,7 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { RecordingsProvider } from "@/stores/recordings";
+import { PlaybackProvider } from "@/hooks/use-playback";
 import BottomNav from "@/components/layout/BottomNav";
 import Home from "./pages/Home";
 import Capture from "./pages/Capture";
@@ -18,6 +19,7 @@ const queryClient = new QueryClient();
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <RecordingsProvider>
+      <PlaybackProvider>
       <TooltipProvider>
         <Toaster />
         <Sonner />
@@ -36,6 +38,7 @@ const App = () => (
           </div>
         </BrowserRouter>
       </TooltipProvider>
+      </PlaybackProvider>
     </RecordingsProvider>
   </QueryClientProvider>
 );
