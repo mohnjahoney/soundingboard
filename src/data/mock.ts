@@ -1,0 +1,82 @@
+import type { Project, RecordingSummary } from '@/types/domain';
+
+export const mockProjects: Project[] = [
+  {
+    id: 'p1',
+    name: 'Morning Sketches',
+    icon: '🌅',
+    createdAt: '2026-04-10T08:00:00Z',
+    updatedAt: '2026-04-14T10:30:00Z',
+  },
+  {
+    id: 'p2',
+    name: 'Beat Ideas',
+    icon: '🥁',
+    createdAt: '2026-04-08T14:00:00Z',
+    updatedAt: '2026-04-13T16:00:00Z',
+  },
+  {
+    id: 'p3',
+    name: 'Vocal Experiments',
+    icon: '🎤',
+    createdAt: '2026-04-05T09:00:00Z',
+    updatedAt: '2026-04-12T11:00:00Z',
+  },
+];
+
+export const mockRecordings: RecordingSummary[] = [
+  {
+    id: 'r1',
+    projectId: 'p1',
+    projectName: 'Morning Sketches',
+    title: 'Chord progression idea',
+    durationMs: 45000,
+    createdAt: '2026-04-14T10:30:00Z',
+    notePreview: 'Nice minor 7th voicing, try with reverb',
+    tagLabels: ['🎹 keys', 'chill'],
+    segmentCount: 2,
+    momentCount: 1,
+  },
+  {
+    id: 'r2',
+    projectId: 'p1',
+    projectName: 'Morning Sketches',
+    durationMs: 120000,
+    createdAt: '2026-04-13T09:15:00Z',
+    notePreview: 'Ambient pad texture, layer with r1',
+    tagLabels: ['ambient'],
+    segmentCount: 1,
+    momentCount: 0,
+  },
+  {
+    id: 'r3',
+    projectId: 'p2',
+    projectName: 'Beat Ideas',
+    title: 'Boom bap loop',
+    durationMs: 30000,
+    createdAt: '2026-04-12T20:00:00Z',
+    tagLabels: ['🥁 drums', 'hip-hop'],
+    segmentCount: 1,
+    momentCount: 2,
+  },
+  {
+    id: 'r4',
+    durationMs: 60000,
+    createdAt: '2026-04-11T15:00:00Z',
+    notePreview: 'Random humming, might be useful',
+    tagLabels: [],
+    segmentCount: 1,
+    momentCount: 0,
+  },
+  {
+    id: 'r5',
+    projectId: 'p3',
+    projectName: 'Vocal Experiments',
+    title: 'Falsetto test',
+    durationMs: 18000,
+    createdAt: '2026-04-10T12:00:00Z',
+    tagLabels: ['🎤 vocal'],
+    segmentCount: 3,
+    momentCount: 1,
+  },
+];
