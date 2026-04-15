@@ -1,13 +1,15 @@
 import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Mic, Sparkles } from 'lucide-react';
 import { motion } from 'framer-motion';
-import { mockProjects, mockRecordings } from '@/data/mock';
+import { useRecordings } from '@/stores/recordings';
+import RecordingCard from '@/components/RecordingCard';
 
 export default function ProjectDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const project = mockProjects.find((p) => p.id === id);
-  const recordings = mockRecordings.filter((r) => r.projectId === id);
+  const { projects, getProjectRecordings } = useRecordings();
+  const project = projects.find((p) => p.id === id);
+  const recordings = id ? getProjectRecordings(id) : [];
 
   if (!project) {
     return (
@@ -44,7 +46,7 @@ export default function ProjectDetail() {
           <Mic className="h-4 w-4" />
           Record
         </motion.button>
-        <button className="flex items-center justify-center gap-2 rounded-xl bg-secondary px-4 py-3 text-secondary-foreground text-sm font-medium">
+        <button className="flex items-center justify-center gap-2 rounded-xl bg-secondary px-4 py-3 text-secondary-foreground text-sm font-medium opacity-50 cursor-not-allowed">
           <Sparkles className="h-4 w-4" />
           Recap
         </button>
@@ -57,36 +59,9 @@ export default function ProjectDetail() {
           {recordings.length === 0 ? (
             <p className="text-sm text-text-tertiary py-8 text-center">No recordings yet</p>
           ) : (
-            recordings.map((r) => {
-              const s = Math.floor(r.durationMs / 1000);
-              const dur = `${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, '0')}`;
-              const date = new Date(r.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-
-              return (
-                <div
-                  key={r.id}
-                  className="rounded-xl bg-card p-4 transition-colors hover:bg-surface-hover cursor-pointer"
-                >
-                  <p className="text-sm font-medium truncate">
-                    {r.title || r.notePreview || 'Untitled'}
-                  </p>
-                  <div className="flex items-center gap-2 mt-1 text-xs text-text-tertiary">
-                    <span>{dur}</span>
-                    <span>·</span>
-                    <span>{date}</span>
-                  </div>
-                  {r.tagLabels.length > 0 && (
-                    <div className="flex gap-1.5 mt-2 flex-wrap">
-                      {r.tagLabels.map((tag) => (
-                        <span key={tag} className="rounded-full bg-secondary px-2.5 py-0.5 text-xs text-secondary-foreground">
-                          {tag}
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              );
-            })
+            recordings.map((r) => (
+              <RecordingCard key={r.id} recording={r} />
+            ))
           )}
         </div>
       </section>
