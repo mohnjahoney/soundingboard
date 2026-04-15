@@ -1,12 +1,14 @@
 import { useNavigate } from 'react-router-dom';
 import { Mic, FolderOpen, ListMusic, ChevronRight } from 'lucide-react';
 import { motion } from 'framer-motion';
-import { mockProjects, mockRecordings } from '@/data/mock';
+import { useRecordings } from '@/stores/recordings';
+import RecordingCard from '@/components/RecordingCard';
 
 export default function Home() {
   const navigate = useNavigate();
-  const recentRecordings = mockRecordings.slice(0, 3);
-  const unassigned = mockRecordings.filter((r) => !r.projectId);
+  const { recordings, projects } = useRecordings();
+  const recentRecordings = recordings.slice(0, 3);
+  const unassigned = recordings.filter((r) => !r.projectId);
 
   return (
     <div className="min-h-screen pb-24">
@@ -36,7 +38,7 @@ export default function Home() {
           <FolderOpen className="h-5 w-5 text-primary" />
           <div>
             <p className="text-sm font-medium">Projects</p>
-            <p className="text-xs text-muted-foreground">{mockProjects.length}</p>
+            <p className="text-xs text-muted-foreground">{projects.length}</p>
           </div>
         </button>
         <button
@@ -46,7 +48,7 @@ export default function Home() {
           <ListMusic className="h-5 w-5 text-primary" />
           <div>
             <p className="text-sm font-medium">Recordings</p>
-            <p className="text-xs text-muted-foreground">{mockRecordings.length}</p>
+            <p className="text-xs text-muted-foreground">{recordings.length}</p>
           </div>
         </button>
       </div>
@@ -82,57 +84,4 @@ export default function Home() {
       )}
     </div>
   );
-}
-
-function RecordingCard({ recording }: { recording: typeof mockRecordings[0] }) {
-  const duration = formatDuration(recording.durationMs);
-  const date = new Date(recording.createdAt).toLocaleDateString('en-US', {
-    month: 'short',
-    day: 'numeric',
-  });
-
-  return (
-    <div className="rounded-xl bg-card p-4 transition-colors hover:bg-surface-hover cursor-pointer">
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0 flex-1">
-          <p className="text-sm font-medium truncate">
-            {recording.title || recording.notePreview || 'Untitled recording'}
-          </p>
-          {recording.notePreview && recording.title && (
-            <p className="text-xs text-muted-foreground truncate mt-0.5">{recording.notePreview}</p>
-          )}
-          <div className="flex items-center gap-2 mt-1.5 text-xs text-text-tertiary">
-            <span>{duration}</span>
-            <span>·</span>
-            <span>{date}</span>
-            {recording.projectName && (
-              <>
-                <span>·</span>
-                <span className="text-text-secondary">{recording.projectName}</span>
-              </>
-            )}
-          </div>
-        </div>
-      </div>
-      {recording.tagLabels.length > 0 && (
-        <div className="flex gap-1.5 mt-2 flex-wrap">
-          {recording.tagLabels.map((tag) => (
-            <span
-              key={tag}
-              className="rounded-full bg-secondary px-2.5 py-0.5 text-xs text-secondary-foreground"
-            >
-              {tag}
-            </span>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function formatDuration(ms: number): string {
-  const s = Math.floor(ms / 1000);
-  const m = Math.floor(s / 60);
-  const sec = s % 60;
-  return `${m}:${sec.toString().padStart(2, '0')}`;
 }

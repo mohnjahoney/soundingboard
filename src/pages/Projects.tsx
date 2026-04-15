@@ -1,11 +1,12 @@
 import { useNavigate } from 'react-router-dom';
 import { Plus, ChevronRight } from 'lucide-react';
-import { mockProjects, mockRecordings } from '@/data/mock';
+import { useRecordings } from '@/stores/recordings';
 
 export default function Projects() {
   const navigate = useNavigate();
+  const { projects, recordings } = useRecordings();
 
-  const projectCounts = mockRecordings.reduce<Record<string, number>>((acc, r) => {
+  const projectCounts = recordings.reduce<Record<string, number>>((acc, r) => {
     if (r.projectId) acc[r.projectId] = (acc[r.projectId] || 0) + 1;
     return acc;
   }, {});
@@ -14,13 +15,13 @@ export default function Projects() {
     <div className="min-h-screen pb-24">
       <header className="flex items-center justify-between px-5 pt-12 pb-6">
         <h1 className="text-2xl font-bold tracking-tight">Projects</h1>
-        <button className="p-2 -mr-2 text-primary">
+        <button className="p-2 -mr-2 text-primary opacity-50 cursor-not-allowed">
           <Plus className="h-5 w-5" />
         </button>
       </header>
 
       <div className="px-5 space-y-2">
-        {mockProjects.map((project) => (
+        {projects.map((project) => (
           <button
             key={project.id}
             onClick={() => navigate(`/projects/${project.id}`)}
