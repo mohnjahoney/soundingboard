@@ -1,3 +1,4 @@
+import { Recording } from '@/types/domain';
 import { createContext, useContext, useState, useCallback, useRef, useEffect, type ReactNode } from 'react';
 
 interface PlaybackState {
@@ -10,13 +11,14 @@ interface PlaybackState {
   /** Total duration in ms */
   durationMs: number;
   /** Start or resume playback for a recording */
-  play: (id: string, durationMs: number) => void;
+  play: (id: string, audioUrl: string, durationMs?: number) => Promise<void>;
   /** Pause playback, keeping position */
   pause: () => void;
   /** Stop playback entirely, reset position */
   stop: () => void;
   /** Toggle play/pause for a specific recording */
-  toggle: (id: string, durationMs: number) => void;
+  // toggle: (id: string, audioBlobUrl: string, durationMs?: number) => Promise<void>;
+  toggle: (recording: Recording) => Promise<void>;
 }
 
 const PlaybackContext = createContext<PlaybackState | null>(null);
@@ -27,69 +29,167 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
   const [positionMs, setPositionMs] = useState(0);
   const [durationMs, setDurationMs] = useState(0);
 
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const positionRef = useRef(0); // avoid stale closures
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const rafRef = useRef<number | null>(null);
+  const progressLogRef = useRef<number[]>([]);
 
-  const clearTick = useCallback(() => {
-    if (intervalRef.current) {
-      clearInterval(intervalRef.current);
-      intervalRef.current = null;
+  const detachAudioListeners = useCallback((audio: HTMLAudioElement | null) => {
+    if (!audio) return;
+    audio.ontimeupdate = null;
+    audio.onloadedmetadata = null;
+    audio.onplay = null;
+    audio.onpause = null;
+    audio.onended = null;
+    audio.onerror = null;
+  }, []);
+
+  const stopProgressLoop = useCallback(() => {
+    if (rafRef.current !== null) {
+      cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
     }
   }, []);
 
-  const startTick = useCallback((dur: number) => {
-    clearTick();
-    intervalRef.current = setInterval(() => {
-      positionRef.current += 100;
-      if (positionRef.current >= dur) {
-        // Playback ended naturally
-        positionRef.current = 0;
-        setPositionMs(0);
-        setIsPlaying(false);
-        setActiveId(null);
-        clearInterval(intervalRef.current!);
-        intervalRef.current = null;
+  const startProgressLoop = useCallback((audio: HTMLAudioElement) => {
+    stopProgressLoop();
+
+    const tick = () => {
+      // setPositionMs(Math.round(audio.currentTime * 1000));
+      setPositionMs(audio.currentTime * 1000);
+      const progressMs = audio.currentTime * 1000;
+        progressLogRef.current.push(progressMs);
+
+      // setPositionMs(Math.round(audio.currentTime * 1000));
+      // setPositionMs(audio.currentTime * 1000);
+      if (!audio.paused && !audio.ended) {
+        rafRef.current = requestAnimationFrame(tick);
       } else {
-        setPositionMs(positionRef.current);
+        rafRef.current = null;
       }
-    }, 100);
-  }, [clearTick]);
+    };
 
-  const play = useCallback((id: string, dur: number) => {
-    // If switching recordings, reset position
-    if (id !== activeId) {
-      positionRef.current = 0;
-      setPositionMs(0);
-    }
-    setActiveId(id);
-    setDurationMs(dur);
-    setIsPlaying(true);
-    startTick(dur);
-  }, [activeId, startTick]);
-
-  const pause = useCallback(() => {
-    clearTick();
-    setIsPlaying(false);
-  }, [clearTick]);
+    rafRef.current = requestAnimationFrame(tick);
+  }, [stopProgressLoop]);
 
   const stop = useCallback(() => {
-    clearTick();
+    const audio = audioRef.current;
+    if (audio) {
+      audio.pause();
+      audio.currentTime = 0;
+    }
+    stopProgressLoop();
     setIsPlaying(false);
     setActiveId(null);
-    positionRef.current = 0;
     setPositionMs(0);
-  }, [clearTick]);
+  }, [stopProgressLoop]);
 
-  const toggle = useCallback((id: string, dur: number) => {
-    if (activeId === id && isPlaying) {
-      pause();
-    } else {
-      play(id, dur);
+  const attachAudioListeners = useCallback((audio: HTMLAudioElement, id: string) => {
+    audio.onloadedmetadata = () => {
+      if (Number.isFinite(audio.duration) && audio.duration > 0) {
+        setDurationMs(Math.round(audio.duration * 1000));
+      }
+    };
+
+    // audio.ontimeupdate = () => {
+    //   setPositionMs(Math.round(audio.currentTime * 1000));
+    // };
+    audio.ontimeupdate = null;
+
+    audio.onplay = () => {
+      setActiveId(id);
+      setIsPlaying(true);
+      startProgressLoop(audio);
+    };
+
+    audio.onpause = () => {
+      setIsPlaying(false);
+      stopProgressLoop();
+    };
+
+    audio.onended = () => {
+      stopProgressLoop();
+      console.log('progress log:', progressLogRef.current);
+      setIsPlaying(false);
+      setActiveId(null);
+      setPositionMs(0);
+      audio.currentTime = 0;
+    };
+
+    audio.onerror = () => {
+      stopProgressLoop();
+      setIsPlaying(false);
+      setActiveId(null);
+      setPositionMs(0);
+    };
+  }, [startProgressLoop, stopProgressLoop]);
+
+  const play = useCallback(async (id: string, audioUrl: string, fallbackDurationMs?: number) => {
+
+    if (!audioUrl) return;
+
+    let audio = audioRef.current;
+    const isSameRecording = activeId === id;
+
+    if (!audio || !isSameRecording) {
+      if (audio) {
+        detachAudioListeners(audio);
+        audio.pause();
+        audio.currentTime = 0;
+      }
+
+      audio = new Audio(audioUrl);
+      progressLogRef.current = [];
+      audioRef.current = audio;
+      setPositionMs(0);
+      setDurationMs(0);
+      // setDurationMs(fallbackDurationMs ?? 0);
+      attachAudioListeners(audio, id);
     }
+
+    setActiveId(id);
+
+    try {
+      await audio.play();
+    } catch (error) {
+      console.error('Audio playback failed', error);
+      setIsPlaying(false);
+      setActiveId(null);
+      setPositionMs(0);
+    }
+  }, [activeId, attachAudioListeners, detachAudioListeners]);
+
+  const pause = useCallback(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    audio.pause();
+    setIsPlaying(false);
+  }, []);
+
+  const toggle = useCallback(async (recording: Recording) => {
+    if (activeId === recording.id && isPlaying) {
+      pause();
+      return;
+    }
+
+    if (!recording.audioUrl) {
+      console.warn('Recording has no audioUrl for playback', recording);
+      return;
+    }
+
+    await play(recording.id, recording.audioUrl, recording.durationMs);
   }, [activeId, isPlaying, pause, play]);
 
-  // Cleanup on unmount
-  useEffect(() => () => clearTick(), [clearTick]);
+  useEffect(() => {
+    return () => {
+      stopProgressLoop();
+      const audio = audioRef.current;
+      if (audio) {
+        detachAudioListeners(audio);
+        audio.pause();
+        audio.currentTime = 0;
+      }
+    };
+  }, [detachAudioListeners, stopProgressLoop]);
 
   return (
     <PlaybackContext.Provider value={{ activeId, isPlaying, positionMs, durationMs, play, pause, stop, toggle }}>

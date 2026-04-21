@@ -3,13 +3,14 @@ import { ArrowLeft, Mic, Sparkles } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useRecordings } from '@/stores/recordings';
 import RecordingCard from '@/components/RecordingCard';
+import { IconRenderer } from '@/lib/IconSystem';
 
 export default function ProjectDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { projects, getProjectRecordings } = useRecordings();
   const project = projects.find((p) => p.id === id);
-  const recordings = id ? getProjectRecordings(id) : [];
+
 
   if (!project) {
     return (
@@ -19,6 +20,8 @@ export default function ProjectDetail() {
     );
   }
 
+  const recordings = id ? getProjectRecordings(id) : [];
+
   return (
     <div className="min-h-screen pb-24">
       <header className="px-4 pt-12 pb-2">
@@ -26,7 +29,9 @@ export default function ProjectDetail() {
           <ArrowLeft className="h-5 w-5" />
         </button>
         <div className="flex items-center gap-3 px-1">
-          <span className="text-3xl">{project.icon || '📁'}</span>
+          <span className="text-3xl">{project.icon
+            ? <IconRenderer config={project.icon} iconSize="large" />
+            : '📁'}</span>
           <div>
             <h1 className="text-xl font-bold tracking-tight">{project.name}</h1>
             <p className="text-xs text-muted-foreground">

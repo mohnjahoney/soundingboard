@@ -1,9 +1,11 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Route, Routes } from "react-router-dom";
+import { HashRouter, Route, Routes } from "react-router-dom";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { RecordingsProvider } from "@/stores/recordings";
+import { ProjectsProvider } from "@/stores/projects";
+import { TagsProvider } from "@/stores/tags";
 import { PlaybackProvider } from "@/hooks/use-playback";
 import BottomNav from "@/components/layout/BottomNav";
 import Home from "./pages/Home";
@@ -18,12 +20,15 @@ const queryClient = new QueryClient();
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
+    
+    <ProjectsProvider>
     <RecordingsProvider>
+    <TagsProvider>
       <PlaybackProvider>
       <TooltipProvider>
         <Toaster />
         <Sonner />
-        <BrowserRouter>
+        <HashRouter>
           <div className="mx-auto max-w-lg">
             <Routes>
               <Route path="/" element={<Home />} />
@@ -36,10 +41,13 @@ const App = () => (
             </Routes>
             <BottomNav />
           </div>
-        </BrowserRouter>
+        </HashRouter>
       </TooltipProvider>
       </PlaybackProvider>
+      </TagsProvider>
     </RecordingsProvider>
+    </ProjectsProvider>
+    
   </QueryClientProvider>
 );
 

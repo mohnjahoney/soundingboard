@@ -1,24 +1,49 @@
 // Core domain types for the audio ideation tool
 
+export type Transform =
+  | { type: 'scale'; value: number }
+  | { type: 'rotate'; deg: number }
+  | { type: 'translate'; x: number; y: number };
+
+export type Layer = {
+  shape: 'circle' | 'square';
+  color: string;
+  transforms: Transform[];
+  reflect?: 'x' | 'y';
+};
+
+export type IconConfig = {
+  layers: Layer[];
+};
+
+export type IconSize = 'small' | 'medium' | 'large';
+
+export const ICON_SIZE_PIXELS: Record<IconSize, number> = {
+  small: 24,
+  medium: 72,
+  large: 120,
+};
+
 export interface Project {
   id: string;
   name: string;
-  icon?: string; // emoji or icon identifier
+  icon: IconConfig;
   createdAt: string; // ISO timestamp
   updatedAt: string;
 }
 
 export interface Recording {
   id: string;
-  projectId?: string;
   title?: string;
+  audioUrl?: string;
+  projectId?: string;
   durationMs: number;
   createdAt: string;
   updatedAt: string;
   segments: Segment[];
   moments: Moment[];
   notes: Note[];
-  tags: Tag[];
+  tagIds: string[];
 }
 
 export interface Segment {
@@ -41,8 +66,10 @@ export interface Moment {
 
 export interface Note {
   id: string;
-  parentType: 'recording' | 'segment' | 'moment' | 'project';
-  parentId: string;
+  parent: {
+    type: 'recording' | 'segment' | 'moment' | 'project';
+    id: string;
+  }
   text: string;
   createdAt: string;
   updatedAt: string;
@@ -89,18 +116,4 @@ export interface CaptureSession {
   currentSegmentIndex: number;
   elapsedMs: number;
   segments: Segment[];
-}
-
-// Summary type for lightweight list rendering
-export interface RecordingSummary {
-  id: string;
-  projectId?: string;
-  projectName?: string;
-  title?: string;
-  durationMs: number;
-  createdAt: string;
-  notePreview?: string;
-  tagLabels: string[];
-  segmentCount: number;
-  momentCount: number;
 }

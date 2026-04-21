@@ -1,23 +1,77 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Pause, Play, Square, Plus, Check, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import type { CaptureState } from '@/types/domain';
 import { useRecordings } from '@/stores/recordings';
+import { useRecorder } from '@/hooks/useRecorder';
+import { IconRenderer } from '@/lib/IconSystem';
+import { useTags } from '@/stores/tags';
+
+type NoteMode = 'idle' | 'write' | 'dictate' | 'transcribe';
+
+type SpeechRecognitionResultList = {
+  length: number;
+  [index: number]: { 0: { transcript: string }; isFinal: boolean };
+};
+
+type SpeechRecognitionResultEvent = {
+  results: SpeechRecognitionResultList;
+};
+
+type SpeechRecognitionInstance = {
+  continuous: boolean;
+  interimResults: boolean;
+  lang: string;
+  start: () => void;
+  stop: () => void;
+  abort: () => void;
+  onstart: (() => void) | null;
+  onresult: ((ev: SpeechRecognitionResultEvent) => void) | null;
+  onend: (() => void) | null;
+  onerror: ((ev: { error: string }) => void) | null;
+};
+
+function getSpeechRecognitionConstructor():
+  | (new () => SpeechRecognitionInstance)
+  | undefined {
+  const w = window as unknown as {
+    SpeechRecognition?: new () => SpeechRecognitionInstance;
+    webkitSpeechRecognition?: new () => SpeechRecognitionInstance;
+  };
+  return w.SpeechRecognition ?? w.webkitSpeechRecognition;
+}
+
+function isCursorEmbeddedBrowser(): boolean {
+  return navigator.userAgent.includes('Cursor/') && navigator.userAgent.includes('Electron/');
+}
 
 export default function Capture() {
   const navigate = useNavigate();
-  const { projects, allTags, addRecording } = useRecordings();
+  const { projects, addRecording } = useRecordings();
+  const { tags, addTag } = useTags();
   const [state, setState] = useState<CaptureState>('ready');
   const [elapsedMs, setElapsedMs] = useState(0);
   const [segmentCount, setSegmentCount] = useState(1);
+  const [segmentMarkersMs, setSegmentMarkersMs] = useState<number[]>([]);
   const [noteText, setNoteText] = useState('');
+  const [noteMode, setNoteMode] = useState<NoteMode>('idle');
+  const [isListening, setIsListening] = useState(false);
+  const [dictationError, setDictationError] = useState<string | null>(null);
+  const dictationBlockedInRuntime = isCursorEmbeddedBrowser();
   const [selectedProjectId, setSelectedProjectId] = useState<string | undefined>();
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [newTag, setNewTag] = useState('');
   const [showProjectPicker, setShowProjectPicker] = useState(false);
   const [showTagPicker, setShowTagPicker] = useState(false);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const noteTextRef = useRef(noteText);
+  const noteTextareaRef = useRef<HTMLTextAreaElement>(null);
+  noteTextRef.current = noteText;
+  const { audioBlob, startRecording, stopRecording, pauseRecording, resumeRecording } = useRecorder();
+  useEffect(() => {
+    console.log("audioBlob changed:", audioBlob);
+  }, [audioBlob]);
 
   useEffect(() => {
     if (state === 'recording') {
@@ -28,6 +82,122 @@ export default function Capture() {
     return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
   }, [state]);
 
+  // Focus note field when entering write mode
+  useEffect(() => {
+    if (noteMode === 'write') {
+      noteTextareaRef.current?.focus();
+    }
+  }, [noteMode]);
+
+  // Transcribe stub: only set placeholder when note is empty (do not clobber user text)
+  useEffect(() => {
+    if (noteMode !== 'transcribe') return;
+    setNoteText((prev) =>
+      prev.trim() === '' ? 'Transcription coming soon...' : prev
+    );
+  }, [noteMode]);
+
+  // Web Speech API: start/stop with mode; merge transcripts from full results each event (avoids duplicate/jitter)
+  useEffect(() => {
+    if (noteMode !== 'dictate') return;
+    if (dictationBlockedInRuntime) {
+      setDictationError('Dictation is unavailable in Cursor preview. Use Chrome or Safari.');
+      setNoteMode('write');
+      return;
+    }
+    setDictationError(null);
+
+    const Ctor = getSpeechRecognitionConstructor();
+    // #region agent log
+    fetch('http://127.0.0.1:7575/ingest/829da6d3-87ba-471e-86c5-8ea6b8519a57',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'2a05af'},body:JSON.stringify({sessionId:'2a05af',runId:'rerun-2',hypothesisId:'H10',location:'src/pages/Capture.tsx:dictateEffect',message:'Dictate effect entered with runtime environment',data:{noteMode,hasCtor:Boolean(Ctor),visibilityState:document.visibilityState,language:navigator.language,isSecureContext,protocol:window.location.protocol,hostname:window.location.hostname,userAgent:navigator.userAgent},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
+    if (!Ctor) {
+      // #region agent log
+      fetch('http://127.0.0.1:7575/ingest/829da6d3-87ba-471e-86c5-8ea6b8519a57',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'2a05af'},body:JSON.stringify({sessionId:'2a05af',runId:'rerun-1',hypothesisId:'H2',location:'src/pages/Capture.tsx:dictateEffect',message:'No constructor, falling back to write',data:{noteMode},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
+      setNoteMode('write');
+      return;
+    }
+
+    const prefix = noteTextRef.current;
+    const recognition = new Ctor();
+    let didStart = false;
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.lang = navigator.language || 'en-US';
+    recognition.onstart = () => {
+      // #region agent log
+      fetch('http://127.0.0.1:7575/ingest/829da6d3-87ba-471e-86c5-8ea6b8519a57',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'2a05af'},body:JSON.stringify({sessionId:'2a05af',runId:'rerun-2',hypothesisId:'H3',location:'src/pages/Capture.tsx:onstart',message:'Recognition onstart fired',data:{continuous:recognition.continuous,interimResults:recognition.interimResults,lang:recognition.lang},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
+    };
+
+    recognition.onresult = (event: SpeechRecognitionResultEvent) => {
+      let sessionText = '';
+      for (let i = 0; i < event.results.length; i++) {
+        sessionText += event.results[i][0].transcript;
+      }
+      const glue = prefix && sessionText.trim() ? ' ' : '';
+      // #region agent log
+      fetch('http://127.0.0.1:7575/ingest/829da6d3-87ba-471e-86c5-8ea6b8519a57',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'2a05af'},body:JSON.stringify({sessionId:'2a05af',runId:'rerun-2',hypothesisId:'H4',location:'src/pages/Capture.tsx:onresult',message:'Recognition result received',data:{resultsLength:event.results.length,sessionTextLength:sessionText.length,preview:sessionText.slice(0,100)},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
+      setNoteText(`${prefix}${glue}${sessionText}`);
+    };
+
+    recognition.onend = () => {
+      // #region agent log
+      fetch('http://127.0.0.1:7575/ingest/829da6d3-87ba-471e-86c5-8ea6b8519a57',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'2a05af'},body:JSON.stringify({sessionId:'2a05af',runId:'rerun-2',hypothesisId:'H5',location:'src/pages/Capture.tsx:onend',message:'Recognition onend fired',data:{didStart,visibilityState:document.visibilityState},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
+      setIsListening(false);
+    };
+    recognition.onerror = (ev: { error: string }) => {
+      // #region agent log
+      fetch('http://127.0.0.1:7575/ingest/829da6d3-87ba-471e-86c5-8ea6b8519a57',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'2a05af'},body:JSON.stringify({sessionId:'2a05af',runId:'rerun-2',hypothesisId:'H11',location:'src/pages/Capture.tsx:onerror',message:'Recognition onerror fired with environment details',data:{error:ev.error,didStart,visibilityState:document.visibilityState,protocol:window.location.protocol,hostname:window.location.hostname,userAgent:navigator.userAgent},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
+      setIsListening(false);
+      setDictationError(
+        ev.error === 'network'
+          ? 'Dictation service is unavailable in this browser context. Try Chrome or Safari.'
+          : `Dictation failed (${ev.error}).`
+      );
+    };
+
+    try {
+      recognition.start();
+      didStart = true;
+      // #region agent log
+      fetch('http://127.0.0.1:7575/ingest/829da6d3-87ba-471e-86c5-8ea6b8519a57',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'2a05af'},body:JSON.stringify({sessionId:'2a05af',runId:'rerun-2',hypothesisId:'H7',location:'src/pages/Capture.tsx:dictateEffect',message:'Recognition start called successfully',data:{didStart,lang:recognition.lang},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
+      setIsListening(true);
+    } catch {
+      // #region agent log
+      fetch('http://127.0.0.1:7575/ingest/829da6d3-87ba-471e-86c5-8ea6b8519a57',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'2a05af'},body:JSON.stringify({sessionId:'2a05af',runId:'rerun-2',hypothesisId:'H8',location:'src/pages/Capture.tsx:dictateEffect',message:'Recognition start threw and fallback to write',data:{didStart,lang:recognition.lang},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
+      setIsListening(false);
+      setNoteMode('write');
+      setDictationError('Dictation failed to start in this browser context.');
+    }
+
+    return () => {
+      // #region agent log
+      fetch('http://127.0.0.1:7575/ingest/829da6d3-87ba-471e-86c5-8ea6b8519a57',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'2a05af'},body:JSON.stringify({sessionId:'2a05af',runId:'rerun-2',hypothesisId:'H9',location:'src/pages/Capture.tsx:cleanup',message:'Dictate effect cleanup running',data:{didStart,visibilityState:document.visibilityState},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
+      recognition.onstart = null;
+      recognition.onresult = null;
+      recognition.onend = null;
+      recognition.onerror = null;
+      try {
+        recognition.stop();
+      } catch {
+        try {
+          recognition.abort();
+        } catch {
+          /* ignore */
+        }
+      }
+      setIsListening(false);
+    };
+  }, [noteMode, dictationBlockedInRuntime]);
+
   const formatTime = (ms: number) => {
     const s = Math.floor(ms / 1000);
     const m = Math.floor(s / 60);
@@ -36,44 +206,101 @@ export default function Capture() {
     return `${m}:${sec.toString().padStart(2, '0')}.${tenths}`;
   };
 
-  const handleRecord = () => setState('recording');
-  const handlePause = () => setState('paused');
-  const handleResume = () => setState('recording');
-  const handleNewSegment = () => {
-    setSegmentCount((c) => c + 1);
+  // const handleRecord = () => setState('recording');
+  const handleRecord = async () => {
+    await startRecording();
+    setElapsedMs(0);
+    setSegmentCount(1);
+    setSegmentMarkersMs([0]);
     setState('recording');
   };
-  const handleFinish = () => setState('review');
+  const handlePause = () => {
+    pauseRecording();
+    setState('paused');
+  };
+  const handleResume = () => {
+    resumeRecording();
+    setState('recording');
+  };
+  const handleNewSegment = () => {
+    setSegmentMarkersMs((prev) => {
+      if (prev[prev.length - 1] === elapsedMs) return prev;
+      return [...prev, elapsedMs];
+    });
+    setSegmentCount((c) => c + 1);
+    resumeRecording();
+    setState('recording');
+  };
+  const handleFinish = () => {
+    stopRecording();
+    setState('review');
+  };
 
   const selectedProject = projects.find((p) => p.id === selectedProjectId);
 
-  const handleSave = () => {
-    const id = `r-${Date.now()}`;
-    addRecording({
-      id,
-      projectId: selectedProjectId,
-      projectName: selectedProject?.name,
-      title: noteText.slice(0, 40) || undefined,
-      durationMs: elapsedMs,
-      createdAt: new Date().toISOString(),
-      notePreview: noteText || undefined,
-      tagLabels: selectedTags,
-      segmentCount,
-      momentCount: 0,
-    });
-    navigate('/');
-  };
+const handleSave = () => {
+  console.log("handleSave audioBlob:", audioBlob);
+  console.log('segmentMarkersMs:', segmentMarkersMs);
+  const id = `r-${Date.now()}`;
 
-  const handleAddTag = (tag: string) => {
-    const trimmed = tag.trim();
-    if (trimmed && !selectedTags.includes(trimmed)) {
-      setSelectedTags((prev) => [...prev, trimmed]);
+  const now = new Date().toISOString();
+  const normalizedMarkers = Array.from(new Set([0, ...segmentMarkersMs]))
+    .filter((ms) => ms >= 0 && ms < elapsedMs)
+    .sort((a, b) => a - b);
+
+  const segments = normalizedMarkers.map((startMs, index) => ({
+    id: `${id}-seg-${index}`,
+    recordingId: id,
+    index,
+    startMs,
+    endMs: normalizedMarkers[index + 1] ?? elapsedMs,
+    createdAt: now,
+  }));
+
+  const tempAudioUrl = audioBlob ? URL.createObjectURL(audioBlob) : undefined;
+  console.log("tempAudioUrl:", tempAudioUrl);
+
+  addRecording({
+    id,
+    projectId: selectedProjectId,
+    title: undefined,
+    durationMs: elapsedMs,
+    createdAt: now,
+    updatedAt: now,
+    tagIds: selectedTags,
+    audioUrl: tempAudioUrl,
+    segments,
+    moments: [],
+    notes: noteText.trim()
+      ? [
+          {
+            id: crypto.randomUUID(),
+            parent: {
+              type: 'recording',
+              id: id,
+            },
+            text: noteText.trim(),
+            createdAt: now,
+            updatedAt: now,
+          },
+        ]
+      : [],
+  });
+  navigate('/');
+};
+
+  const handleAddTag = (label: string) => {
+    const trimmed = label.trim();
+    if (!trimmed) return;
+    const tag = addTag(trimmed); // returns existing or new Tag
+    if (!selectedTags.includes(tag.id)) {
+      setSelectedTags((prev) => [...prev, tag.id]);
     }
     setNewTag('');
   };
 
-  const handleRemoveTag = (tag: string) => {
-    setSelectedTags((prev) => prev.filter((t) => t !== tag));
+  const handleRemoveTag = (tagId: string) => {
+    setSelectedTags((prev) => prev.filter((id) => id !== tagId));
   };
 
   return (
@@ -108,13 +335,68 @@ export default function Capture() {
               {/* Note */}
               <div>
                 <label className="text-xs font-medium text-text-secondary mb-1.5 block">Note</label>
-                <textarea
-                  value={noteText}
-                  onChange={(e) => setNoteText(e.target.value)}
-                  placeholder="What were you thinking?"
-                  rows={3}
-                  className="w-full rounded-xl bg-card border border-border px-4 py-3 text-sm text-foreground placeholder:text-text-tertiary resize-none focus:outline-none focus:ring-1 focus:ring-ring"
-                />
+                {noteMode === 'idle' ? (
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (dictationBlockedInRuntime) {
+                          setDictationError('Dictation is unavailable in Cursor preview. Use Chrome or Safari.');
+                          setNoteMode('write');
+                          return;
+                        }
+                        setDictationError(null);
+                        setNoteMode('dictate');
+                      }}
+                      className="rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground hover:bg-surface-hover disabled:cursor-not-allowed disabled:opacity-60"
+                      disabled={dictationBlockedInRuntime}
+                      title={dictationBlockedInRuntime ? 'Dictation is unavailable in Cursor preview. Use Chrome or Safari.' : undefined}
+                    >
+                      🎤 Dictate
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setNoteMode('write')}
+                      className="rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground hover:bg-surface-hover"
+                    >
+                      ✏️ Write
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setNoteMode('transcribe')}
+                      className="rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground hover:bg-surface-hover"
+                    >
+                      🧠 Transcribe
+                    </button>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {noteMode === 'dictate' && isListening && (
+                      <p className="text-xs text-muted-foreground">Listening...</p>
+                    )}
+                    {noteMode === 'dictate' && dictationError && (
+                      <p className="text-xs text-destructive">{dictationError}</p>
+                    )}
+                    {noteMode === 'write' && dictationBlockedInRuntime && dictationError && (
+                      <p className="text-xs text-destructive">{dictationError}</p>
+                    )}
+                    <textarea
+                      ref={noteTextareaRef}
+                      value={noteText}
+                      onChange={(e) => setNoteText(e.target.value)}
+                      placeholder="What were you thinking?"
+                      rows={3}
+                      className="w-full rounded-xl bg-card border border-border px-4 py-3 text-sm text-foreground placeholder:text-text-tertiary resize-none focus:outline-none focus:ring-1 focus:ring-ring"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setNoteMode('idle')}
+                      className="text-xs text-primary hover:underline"
+                    >
+                      Choose input method
+                    </button>
+                  </div>
+                )}
               </div>
 
               {/* Project assignment */}
@@ -140,7 +422,11 @@ export default function Capture() {
                           onClick={() => { setSelectedProjectId(p.id); setShowProjectPicker(false); }}
                           className={`w-full text-left px-4 py-3 text-sm hover:bg-surface-hover transition-colors flex items-center gap-2 ${selectedProjectId === p.id ? 'text-primary' : 'text-foreground'}`}
                         >
-                          <span>{p.icon || '📁'}</span>
+                          <span>
+                            {p.icon
+                              ? <IconRenderer config={p.icon} iconSize="small" />
+                              : '📁'}
+                          </span>
                           <span>{p.name}</span>
                         </button>
                       ))}
@@ -153,7 +439,11 @@ export default function Capture() {
                   >
                     {selectedProject ? (
                       <span className="text-foreground flex items-center gap-2">
-                        <span>{selectedProject.icon || '📁'}</span>
+                        <span>
+                          {selectedProject.icon
+                            ? <IconRenderer config={selectedProject.icon} iconSize="small" />
+                            : '📁'}
+                        </span>
                         {selectedProject.name}
                       </span>
                     ) : (
@@ -185,17 +475,19 @@ export default function Capture() {
                       />
                     </div>
                     {/* Existing tags */}
-                    {allTags.filter((t) => !selectedTags.includes(t)).length > 0 && (
+                    {tags.filter((t) => !selectedTags.includes(t.id)).length > 0 && (
                       <div className="px-4 py-2 flex flex-wrap gap-1.5">
-                        {allTags.filter((t) => !selectedTags.includes(t)).map((tag) => (
-                          <button
-                            key={tag}
-                            onClick={() => handleAddTag(tag)}
-                            className="rounded-full bg-secondary px-2.5 py-0.5 text-xs text-secondary-foreground hover:bg-surface-hover transition-colors"
-                          >
-                            {tag}
-                          </button>
-                        ))}
+                        {tags
+                          .filter((t) => !selectedTags.includes(t.id))
+                          .map((tag) => (
+                            <button
+                              key={tag.id}
+                              onClick={() => handleAddTag(tag.label)}
+                              className="rounded-full bg-secondary px-2.5 py-0.5 text-xs text-secondary-foreground hover:bg-surface-hover transition-colors"
+                            >
+                              {tag.label}
+                            </button>
+                          ))}
                       </div>
                     )}
                   </div>
@@ -206,11 +498,15 @@ export default function Capture() {
                   >
                     {selectedTags.length > 0 ? (
                       <div className="flex gap-1.5 flex-wrap">
-                        {selectedTags.map((tag) => (
-                          <span key={tag} className="rounded-full bg-secondary px-2.5 py-0.5 text-xs text-secondary-foreground">
-                            {tag}
-                          </span>
-                        ))}
+                        {selectedTags.map((id) => {
+                          const tag = tags.find((t) => t.id === id);
+                          if (!tag) return null;
+                          return (
+                            <span key={id} className="rounded-full bg-secondary px-2.5 py-0.5 text-xs text-secondary-foreground">
+                              {tag.label}
+                            </span>
+                          );
+                        })}
                       </div>
                     ) : (
                       <span className="text-muted-foreground">Add tags</span>
@@ -222,16 +518,20 @@ export default function Capture() {
                 {/* Selected tags with remove */}
                 {selectedTags.length > 0 && !showTagPicker && (
                   <div className="flex gap-1.5 flex-wrap mt-2">
-                    {selectedTags.map((tag) => (
-                      <button
-                        key={tag}
-                        onClick={() => handleRemoveTag(tag)}
-                        className="rounded-full bg-primary/15 text-primary px-2.5 py-0.5 text-xs flex items-center gap-1"
-                      >
-                        {tag}
-                        <X className="h-3 w-3" />
-                      </button>
-                    ))}
+                    {selectedTags.map((id) => {
+                      const tag = tags.find((t) => t.id === id);
+                      if (!tag) return null;
+                      return (
+                        <button
+                          key={id}
+                          onClick={() => handleRemoveTag(id)}
+                          className="rounded-full bg-primary/15 text-primary px-2.5 py-0.5 text-xs flex items-center gap-1"
+                        >
+                          {tag.label}
+                          <X className="h-3 w-3" />
+                        </button>
+                      );
+                    })}
                   </div>
                 )}
               </div>

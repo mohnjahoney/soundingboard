@@ -1,28 +1,25 @@
 import { createContext, useContext, useState, useCallback, type ReactNode } from 'react';
-import type { RecordingSummary, Project } from '@/types/domain';
+import type { Recording, Project, IconConfig } from '@/types/domain';
 import { mockRecordings, mockProjects } from '@/data/mock';
+import { now } from '@/lib/utils';
 
 interface RecordingsState {
-  recordings: RecordingSummary[];
+  recordings: Recording[];
   projects: Project[];
-  allTags: string[];
-  addRecording: (r: RecordingSummary) => void;
-  getRecording: (id: string) => RecordingSummary | undefined;
-  getProjectRecordings: (projectId: string) => RecordingSummary[];
-  addProject: (p: Project) => void;
+  addRecording: (r: Recording) => void;
+  getRecording: (id: string) => Recording | undefined;
+  getProjectRecordings: (projectId: string) => Recording[];
+  addProject: (name: string, icon: IconConfig) => void;
+  assignRecordingToProject: (recordingId: string, projectId?: string) => void;
 }
 
 const RecordingsContext = createContext<RecordingsState | null>(null);
 
 export function RecordingsProvider({ children }: { children: ReactNode }) {
-  const [recordings, setRecordings] = useState<RecordingSummary[]>(mockRecordings);
-  const [projects] = useState<Project[]>(mockProjects);
+  const [recordings, setRecordings] = useState<Recording[]>(mockRecordings);
+  const [projects, setProjects] = useState<Project[]>(mockProjects);
 
-  const allTags = Array.from(
-    new Set(recordings.flatMap((r) => r.tagLabels))
-  ).filter(Boolean);
-
-  const addRecording = useCallback((r: RecordingSummary) => {
+  const addRecording = useCallback((r: Recording) => {
     setRecordings((prev) => [r, ...prev]);
   }, []);
 
@@ -36,13 +33,31 @@ export function RecordingsProvider({ children }: { children: ReactNode }) {
     [recordings]
   );
 
-  const addProject = useCallback((p: Project) => {
-    // placeholder — not yet used
+  const addProject = useCallback((name: string, icon: IconConfig) => {
+    const newProject: Project = {
+      id: crypto.randomUUID(),
+      name,
+      icon,
+      createdAt: now(),
+      updatedAt: now(),
+    };
+
+    setProjects((prev) => [newProject, ...prev]);
+  }, []);
+
+  const assignRecordingToProject = useCallback((recordingId: string, projectId?: string) => {
+    setRecordings((prev) =>
+      prev.map((r) =>
+        r.id === recordingId
+          ? { ...r, projectId }
+          : r
+      )
+    );
   }, []);
 
   return (
     <RecordingsContext.Provider
-      value={{ recordings, projects, allTags, addRecording, getRecording, getProjectRecordings, addProject }}
+      value={{ recordings, projects, addRecording, getRecording, getProjectRecordings, addProject, assignRecordingToProject }}
     >
       {children}
     </RecordingsContext.Provider>

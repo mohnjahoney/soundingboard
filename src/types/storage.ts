@@ -1,7 +1,6 @@
 import type {
   Project,
   Recording,
-  RecordingSummary,
   Note,
   Tag,
 } from './domain';
@@ -20,7 +19,7 @@ export interface StorageProvider {
   deleteProject(id: string): Promise<void>;
 
   // Recordings
-  listRecordings(filter?: { projectId?: string }): Promise<RecordingSummary[]>;
+  listRecordings(filter?: { projectId?: string }): Promise<Recording[]>;
   getRecording(id: string): Promise<Recording | null>;
   createRecording(recording: Omit<Recording, 'id' | 'createdAt' | 'updatedAt'>): Promise<Recording>;
   updateRecording(id: string, updates: Partial<Recording>): Promise<Recording>;

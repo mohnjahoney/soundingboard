@@ -13,7 +13,7 @@ export default function Home() {
   return (
     <div className="min-h-screen pb-24">
       <header className="px-5 pt-12 pb-6">
-        <h1 className="text-2xl font-bold tracking-tight">Soundboard</h1>
+        <h1 className="text-2xl font-bold tracking-tight">soundingboard</h1>
         <p className="mt-1 text-sm text-text-secondary">Capture what you hear in your head.</p>
       </header>
 
