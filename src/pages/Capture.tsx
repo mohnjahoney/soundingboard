@@ -372,7 +372,7 @@ const handleSave = () => {
                 ) : (
                   <div className="space-y-2">
                     {noteMode === 'dictate' && isListening && (
-                      <p className="text-xs text-muted-foreground">Listening...</p>
+                      <p className="text-xs text-muted-foreground">Talk about it...</p>
                     )}
                     {noteMode === 'dictate' && dictationError && (
                       <p className="text-xs text-destructive">{dictationError}</p>
