@@ -7,6 +7,7 @@ interface RecordingsState {
   recordings: Recording[];
   projects: Project[];
   addRecording: (r: Recording) => void;
+  updateRecording: (id: string, updates: Partial<Recording>) => void;
   getRecording: (id: string) => Recording | undefined;
   getProjectRecordings: (projectId: string) => Recording[];
   addProject: (name: string, icon: IconConfig) => void;
@@ -21,6 +22,16 @@ export function RecordingsProvider({ children }: { children: ReactNode }) {
 
   const addRecording = useCallback((r: Recording) => {
     setRecordings((prev) => [r, ...prev]);
+  }, []);
+
+  const updateRecording = useCallback((id: string, updates: Partial<Recording>) => {
+    setRecordings((prev) =>
+      prev.map((r) =>
+        r.id === id
+          ? { ...r, ...updates, updatedAt: now() }
+          : r
+      )
+    );
   }, []);
 
   const getRecording = useCallback(
@@ -57,7 +68,7 @@ export function RecordingsProvider({ children }: { children: ReactNode }) {
 
   return (
     <RecordingsContext.Provider
-      value={{ recordings, projects, addRecording, getRecording, getProjectRecordings, addProject, assignRecordingToProject }}
+      value={{ recordings, projects, addRecording, updateRecording, getRecording, getProjectRecordings, addProject, assignRecordingToProject }}
     >
       {children}
     </RecordingsContext.Provider>

@@ -15,24 +15,52 @@ function fmt(ms: number): string {
 }
 
 type NoteViewState = 'static' | 'mode' | 'editing';
+type EditMode = 'write' | 'dictate' | null;
+type SpeechRecognitionResultLike = {
+  0: {
+    transcript: string;
+  };
+  isFinal: boolean;
+};
+type SpeechRecognitionEventLike = {
+  results: ArrayLike<SpeechRecognitionResultLike>;
+  resultIndex: number;
+};
+type SpeechRecognitionLike = {
+  continuous: boolean;
+  interimResults: boolean;
+  onresult: ((event: SpeechRecognitionEventLike) => void) | null;
+  start: () => void;
+  stop: () => void;
+};
+type SpeechRecognitionConstructor = new () => SpeechRecognitionLike;
+type SpeechRecognitionWindow = Window & {
+  SpeechRecognition?: SpeechRecognitionConstructor;
+  webkitSpeechRecognition?: SpeechRecognitionConstructor;
+};
 
 export default function RecordingDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { getRecording, projects } = useRecordings();
+  const { getRecording, updateRecording, projects } = useRecordings();
   const { tags } = useTags();
   const { activeId, isPlaying, positionMs, durationMs, toggle, stop } = usePlayback();
   const recording = id ? getRecording(id) : undefined;
   const [noteViewState, setNoteViewState] = useState<NoteViewState>('static');
+  const [editMode, setEditMode] = useState<EditMode>(null);
+  const [draftNote, setDraftNote] = useState('');
   const noteContainerRef = useRef<HTMLDivElement | null>(null);
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
+  const dictationBaseRef = useRef('');
+
+  const speechRecognitionWindow = window as SpeechRecognitionWindow;
+  const SpeechRecognition =
+    speechRecognitionWindow.SpeechRecognition ||
+    speechRecognitionWindow.webkitSpeechRecognition;
 
   const isThisPlaying = activeId === id && isPlaying;
   const isThisActive = activeId === id;
-
-  // const effectiveDurationMs = isThisActive && durationMs > 0 ? durationMs : recording?.durationMs ?? 0;
-  const totalDurationMs = isThisActive
-  ? durationMs
-  : recording.durationMs;
 
   // Stop playback when leaving this screen
   useEffect(() => {
@@ -46,7 +74,33 @@ export default function RecordingDetail() {
       const target = event.target as Node | null;
       if (!target) return;
       if (!noteContainerRef.current?.contains(target)) {
+        if (noteViewState === 'editing' && recording) {
+          const timestamp = new Date().toISOString();
+          const trimmedNote = draftNote.trim();
+          const existingNote = recording.notes[0];
+
+          updateRecording(recording.id, {
+            notes: trimmedNote
+              ? [
+                  {
+                    ...(existingNote ?? {
+                      id: crypto.randomUUID(),
+                      parent: {
+                        type: 'recording',
+                        id: recording.id,
+                      },
+                      createdAt: timestamp,
+                    }),
+                    text: trimmedNote,
+                    updatedAt: timestamp,
+                  },
+                ]
+              : [],
+          });
+        }
+
         setNoteViewState('static');
+        setEditMode(null);
       }
     };
 
@@ -54,7 +108,54 @@ export default function RecordingDetail() {
     return () => {
       document.removeEventListener('mousedown', handleOutsideClick);
     };
+  }, [draftNote, noteViewState, recording, updateRecording]);
+
+  useEffect(() => {
+    if (noteViewState === 'editing') {
+      textareaRef.current?.focus();
+    }
   }, [noteViewState]);
+
+  useEffect(() => {
+    if (noteViewState !== 'editing' || editMode !== 'dictate') return;
+
+    if (!SpeechRecognition) {
+      setEditMode('write');
+      return;
+    }
+
+    const recognition = new SpeechRecognition();
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.onresult = (event) => {
+      let finalTranscript = '';
+      let interimTranscript = '';
+
+      for (let i = 0; i < event.results.length; i++) {
+        const result = event.results[i];
+        if (result.isFinal) {
+          finalTranscript += result[0].transcript;
+        } else if (i >= event.resultIndex) {
+          interimTranscript += result[0].transcript;
+        }
+      }
+
+      const dictatedText = `${finalTranscript}${interimTranscript}`.trim();
+      const baseText = dictationBaseRef.current.trim();
+      setDraftNote([baseText, dictatedText].filter(Boolean).join(' '));
+    };
+
+    recognition.start();
+    recognitionRef.current = recognition;
+
+    return () => {
+      if (recognitionRef.current) {
+        recognitionRef.current.onresult = null;
+        recognitionRef.current.stop();
+        recognitionRef.current = null;
+      }
+    };
+  }, [editMode, noteViewState, SpeechRecognition]);
 
   if (!recording) {
     return (
@@ -63,6 +164,11 @@ export default function RecordingDetail() {
       </div>
     );
   }
+
+  // const effectiveDurationMs = isThisActive && durationMs > 0 ? durationMs : recording?.durationMs ?? 0;
+  const totalDurationMs = isThisActive
+    ? durationMs
+    : recording.durationMs;
 
   const date = new Date(recording.createdAt).toLocaleDateString('en-US', {
     weekday: 'short',
@@ -76,9 +182,9 @@ export default function RecordingDetail() {
   //   ? Math.min(100, (positionMs / effectiveDurationMs) * 100)
   //   : 0;
   const progress =
-  isThisActive && totalDurationMs > 0
-    ? Math.min(100, (positionMs / totalDurationMs) * 100)
-    : 0;
+    isThisActive && totalDurationMs > 0
+      ? Math.min(100, (positionMs / totalDurationMs) * 100)
+      : 0;
 
   const segmentMarkersMs = recording.segments
     .map((segment) => segment.startMs)
@@ -198,36 +304,61 @@ export default function RecordingDetail() {
       )}
 
       {/* Note */}
-      {recording.notes.length > 0 && (
-        <div className="px-5 mt-5">
-          <p className="text-xs font-medium text-text-secondary mb-2">Note</p>
-          <div ref={noteContainerRef} className="rounded-xl bg-card p-4">
-            {noteViewState === 'static' && (
-              <div onClick={() => setNoteViewState('mode')}>
-                <p className="text-sm text-foreground leading-relaxed">{recording.notes[0].text}</p>
-              </div>
-            )}
-            {noteViewState === 'mode' && (
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => setNoteViewState('editing')}
-                  className="rounded-lg border border-border px-3 py-2 text-sm text-foreground"
-                >
-                  🎤 Dictate
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setNoteViewState('editing')}
-                  className="rounded-lg border border-border px-3 py-2 text-sm text-foreground"
-                >
-                  ✏️ Write
-                </button>
-              </div>
-            )}
-          </div>
+      <div className="px-5 mt-5">
+        <p className="text-xs font-medium text-text-secondary mb-2">Note</p>
+        <div ref={noteContainerRef} className="rounded-xl bg-card p-4">
+          {noteViewState === 'static' && (
+            <div onClick={() => setNoteViewState('mode')}>
+              <p className="text-sm text-foreground leading-relaxed">
+                {recording.notes[0]?.text || 'No note'}
+              </p>
+            </div>
+          )}
+          {noteViewState === 'mode' && (
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  const noteText = recording.notes[0]?.text || '';
+                  dictationBaseRef.current = noteText;
+                  setEditMode('dictate');
+                  setDraftNote(noteText);
+                  setNoteViewState('editing');
+                }}
+                className="rounded-lg border border-border px-3 py-2 text-sm text-foreground"
+              >
+                🎤 Dictate
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  dictationBaseRef.current = '';
+                  setEditMode('write');
+                  setDraftNote(recording.notes[0]?.text || '');
+                  setNoteViewState('editing');
+                }}
+                className="rounded-lg border border-border px-3 py-2 text-sm text-foreground"
+              >
+                ✏️ Write
+              </button>
+            </div>
+          )}
+          {noteViewState === 'editing' && (
+            <>
+              {editMode === 'dictate' && (
+                <p className="mb-2 text-xs text-text-secondary">Listening...</p>
+              )}
+              <textarea
+                ref={textareaRef}
+                aria-label={editMode === 'dictate' ? 'Dictated note' : 'Write note'}
+                value={draftNote}
+                onChange={(event) => setDraftNote(event.target.value)}
+                className="min-h-24 w-full resize-none bg-transparent text-sm text-foreground leading-relaxed outline-none"
+              />
+            </>
+          )}
         </div>
-      )}
+      </div>
     </div>
   );
 }
