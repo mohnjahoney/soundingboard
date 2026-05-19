@@ -24,3 +24,52 @@ This is bringing up another related idea which is more about exploration and com
 
 The moral of this brief story is, let's think about the different roles that these recordings might play in our overall process. We might be fine-tuning, we might be exploring, we might be comparing, we might just be fucking around.
 
+Watched this video on Obsidian - a Markdown based note taking app.
+https://www.youtube.com/watch?v=z4AbijUCoKU
+There were a number of similarities with soundingboard.
+- a space to collect things that are hard to organize and organize them
+- flexibility - tags, bookmarks, etc
+Don't overstructure - let the structure emerge.
+
+He mentions the idea of "idea maps" as opposed to just linking things
+These idea maps are like "hubs"
+So if you had notes A, B, C, D, .. Z, you might connect most vowels to other vowels and most consonants to other consonants and this would be a graphical mess
+OR you could create a "types of letters" note and maybe a note for consonants and one for vowels
+In other words, when you have fairly high connectivity, rather than spend a lot of time adding all of the many pair-wise connections, just put the list of nodes in a group (essentially saying these are all connected)
+Said another way, it sometimes makes more sense to define a *class* than a *pairwise relationship*.
+
+Apparently you can record audio straight into Obsidian.
+SO! does Obsidian do everything already?
+- it already does a lot of what we want to do - tagging, filtering, connecting, graph maps
+- it is very visually complex (because it is so feature rich) - we want things to be more streamlined - that's the philosophy
+- it doesn't have special treatment for audio
+
+What are we going to do?
+- maybe build an extension for Obsidian that has better UI for recording audio and some better functionality for organizing / cleaning audio.
+
+Would be worth trying out Obsidian as a creative audio tool and see what works and what doesn't.
+
+
+
+It would be nice if the speech-to-text was primed to handle music related things like chord symbols and note names
+
+Came across this note - had some description of the *process* of making music wrt organization. 
+Might be useful to mine for other similar accounts.
+https://frankenstein.country/posts/using-obsidian-for-project-management
+
+This guy built a plugin to turn Obsidian into a flexible Spotify
+https://www.youtube.com/watch?v=6-eWsSd6mao
+lots of overlap here too
+
+Walkthrough of the CEOs vault
+https://www.youtube.com/watch?v=Dq3R3uS0sQ4
+NO MORE FOLDERS
+this is because things are often multiconnected
+AND
+compute has made search ESSENTIALLY TRIVIAL
+
+Obsidian uses links heavily.
+Is there a place for us to use links?
+One thing that feels kind of like a link is when we have a sequence of "takes".
+This is like a linked list that we could step through
+
